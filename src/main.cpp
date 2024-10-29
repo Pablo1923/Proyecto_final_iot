@@ -233,13 +233,34 @@ void setup() {
   pinMode(motor[3], OUTPUT);
   pinMode(motor[4], OUTPUT);
 
-  estado = "Activo temperatura";
+  estado = "aceleraAdelante50";
   moveData = "S";
   speed = 250;
   
 }
 
 void loop() {
+
+  if(estado == "aceleraAdelante50"){
+    Serial.print("\nIngresó al estado 'aceleraAdelante50' y acelerará hacia adelante a 50");
+    setSpeed(50);
+    forward();
+    delay(3000);
+    estado = "aceleraAdelante100";
+  }
+
+  if(estado == "aceleraAdelante100"){
+    Serial.print("\nIngresó al estado 'aceleraAdelante100' y acelerará hacia adelante a 100");
+    setSpeed(100);
+    forward();
+    delay(3000);
+    estado = "aceleraAdelante150";
+  }
+
+
+
+  //Aquí va mi programación
+
   moveDataProcess();
   setSpeed();
 
