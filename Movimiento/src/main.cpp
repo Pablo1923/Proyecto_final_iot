@@ -228,10 +228,10 @@ void setup() {
   pinMode(contPins[0], OUTPUT);
   pinMode(contPins[1], OUTPUT);
 
+  pinMode(motor[0], OUTPUT);
   pinMode(motor[1], OUTPUT);
   pinMode(motor[2], OUTPUT);
   pinMode(motor[3], OUTPUT);
-  pinMode(motor[4], OUTPUT);
 
   estado = "aceleraAdelante50";
   moveData = "S";
@@ -241,28 +241,78 @@ void setup() {
 
 void loop() {
 
+
   if(estado == "aceleraAdelante50"){
     Serial.print("\nIngresó al estado 'aceleraAdelante50' y acelerará hacia adelante a 50");
-    setSpeed(50);
-    forward();
-    delay(3000);
+    setSpeed(100); 
+    moveData = "R";
+    moveDataProcess();
+    delay(5000);
     estado = "aceleraAdelante100";
   }
 
   if(estado == "aceleraAdelante100"){
     Serial.print("\nIngresó al estado 'aceleraAdelante100' y acelerará hacia adelante a 100");
-    setSpeed(100);
-    forward();
-    delay(3000);
-    estado = "aceleraAdelante150";
+    setSpeed(200);
+    moveData = "R";
+    moveDataProcess();
+    delay(5000);
+    estado = "desaceleraAdeleraAdelante50";
   }
 
+  if(estado == "desaceleraAdeleraAdelante50"){
+    Serial.print("\nIngresó al estado 'desaceleraAdeleraAdelante50' y desacelerará hacia adelante a 50");
+    setSpeed(100);
+    moveData = "R";
+    moveDataProcess();
+    delay(5000);
+    estado = "quieto";
+  }
 
+  if(estado == "quieto"){
+    Serial.print("\nIngresó al estado 'quieto' y se detendrá");
+    moveData = "S";
+    setSpeed(0);
+    moveDataProcess();
+    delay(5000);
+    estado = "aceleraAtras50";
+  }
 
-  //Aquí va mi programación
+  if(estado == "aceleraAtras50"){
+    Serial.print("\nIngresó al estado 'aceleraAdelante50' y acelerará hacia adelante a 50");
+    setSpeed(100); 
+    moveData = "L";
+    moveDataProcess();
+    delay(5000);
+    estado = "aceleraAtras100";
+  }
 
-  moveDataProcess();
-  setSpeed();
+  if(estado == "aceleraAtras100"){
+    Serial.print("\nIngresó al estado 'aceleraAdelante100' y acelerará hacia adelante a 100");
+    setSpeed(200);
+    moveData = "L";
+    moveDataProcess();
+    delay(5000);
+    estado = "desaceleraAtras50";
+  }
+
+  if(estado == "desaceleraAtras50"){
+    Serial.print("\nIngresó al estado 'desaceleraAdeleraAdelante50' y desacelerará hacia adelante a 50");
+    setSpeed(100);
+    moveData = "L";
+    moveDataProcess();
+    delay(5000);
+    estado = "quieto";
+  }
+
+  if(estado == "quieto"){
+    Serial.print("\nIngresó al estado 'quieto' y se detendrá");
+    moveData = "S";
+    setSpeed(0);
+    moveDataProcess();
+    delay(5000);
+    estado = "aceleraAdelante50";
+  }
 
 }
 
@@ -315,10 +365,10 @@ void setSpeed()
     {
       maxSpeed++;
       Serial.println(maxSpeed);
+      analogWrite(motor[0], maxSpeed);
       analogWrite(motor[1], maxSpeed);
       analogWrite(motor[2], maxSpeed);
       analogWrite(motor[3], maxSpeed);
-      analogWrite(motor[4], maxSpeed);
     }
   }
 }
@@ -326,10 +376,10 @@ void setSpeed()
 void setSpeed(int sp)
 {
   maxSpeed = 100;
+  analogWrite(motor[0], sp);
   analogWrite(motor[1], sp);
   analogWrite(motor[2], sp);
   analogWrite(motor[3], sp);
-  analogWrite(motor[4], sp);
 }
 
 void forward()
