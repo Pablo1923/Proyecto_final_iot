@@ -1,0 +1,6 @@
+dash==2.12.1
+dash_daq==0.5.0
+crate==0.26.0
+pandas
+plotly==5.15.0
+skforecast==0.13.0
