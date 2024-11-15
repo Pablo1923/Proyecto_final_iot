@@ -6,58 +6,60 @@
 #include <WiFi.h>
 #include <vector>
 #include <SoftwareSerial.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_TSL2561_U.h>
+#include <HardwareSerial.h>
+#include "Ai_AP3216_AmbientLightAndProximity.h"
 
 #ifndef CONFIG_RADIO_FREQ
 #define CONFIG_RADIO_FREQ           915.0
 #endif
 #ifndef CONFIG_RADIO_OUTPUT_POWER
-#define CONFIG_RADIO_OUTPUT_POWER   17
+#define CONFIG_RADIO_OUTPUT_POWER   5
 #endif
 #ifndef CONFIG_RADIO_BW
 #define CONFIG_RADIO_BW             125.0
 #endif
 
-#if !defined(USING_SX1276) && !defined(USING_SX1278)
-#error "LoRa example is only allowed to run SX1276/78. For other RF models, please run examples/RadioLibExamples"
-#endif
+using namespace std;
 
 // Variables globales
 int counter = 0;
 float temperaturaf = 0;
 float humidityf = 0;
-float lightLevel = 0;
 String estado = "A";
 vector<float> temperatures;
 vector<float> humidities;
 
 // Pines I2C y GPS
-static const int I2C_SDA = 21; // SDA y SCL
-static const int I2C_SCL = 22;
-static const int RXPin = 34, TXPin = 12;
+static const int MY_I2C_SDA = 21;
+static const int MY_I2C_SCL = 22;
+static const int RXPin = 34; // Pin RX para GPS
+static const int TXPin = 12;  // Pin TX para GPS
 
 // Configuración del GPS
-SoftwareSerial ss(RXPin, TXPin);
+//SoftwareSerial ss(RXPin, TXPin);
 TinyGPSPlus gps;
 
 // Definir WiFi
 const char* ssid = "UPBWiFi";
 const char* password = "";
+const char* host = "10.38.32.137";
+const uint16_t port = 1026;
 WiFiClient cliente;
 
-// Definir sensores
+// Definir sensor HDC1080 y AP3216
 ClosedCube_HDC1080 sensor;
-Adafruit_TSL2561_Unified tsl = Adafruit_TSL2561_Unified(TSL2561_ADDR_FLOAT, 12345); // Dirección por defecto
-
-// ID del dispositivo
-const char* deviceId = "point10"; // ID para David Zapata
+Ai_AP3216_AmbientLightAndProximity aps = Ai_AP3216_AmbientLightAndProximity(); // Configuración correcta del sensor de luz y proximidad
 
 unsigned long lastUpdateTime = 0;
 
+// Prototipos de funciones auxiliares
+float averagetemp(const vector<float>& temperatures);
+float averagehum(const vector<float>& humidities);
+static void smartDelay(unsigned long ms); // Declaración de smartDelay
+
 void setup() {
     // Iniciar comunicación I2C
-    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.begin(MY_I2C_SDA, MY_I2C_SCL);
 
     // Configuración del sensor HDC1080
     sensor.begin(0x40);
@@ -65,10 +67,15 @@ void setup() {
 
     // Iniciar Serial para depuración
     Serial.begin(115200);
-    Serial.println("Configurando LoRa, el sensor y GPS...");
+    Serial.println("Configurando LoRa, el sensor de luz, el sensor de temperatura y humedad, y GPS...");
 
     // Configuración del GPS
-    ss.begin(9600);
+    Serial2.begin(9600, SERIAL_8N1, 34, 12);
+
+    // Configuración del sensor de luz y proximidad AP3216
+    aps.begin();
+    aps.startAmbientLightAndProximitySensor();
+    Serial.println("Sensor AP3216 inicializado.");
 
     // Conexión WiFi
     WiFi.mode(WIFI_STA);
@@ -90,7 +97,7 @@ void setup() {
 
     LoRa.setPins(RADIO_CS_PIN, RADIO_RST_PIN, RADIO_DIO0_PIN);
     if (!LoRa.begin(CONFIG_RADIO_FREQ * 1000000)) {
-        Serial.println("Starting LoRa failed!");
+        Serial.println("Error iniciando LoRa");
         while (1);
     }
 
@@ -102,83 +109,75 @@ void setup() {
     LoRa.disableCrc();
     LoRa.disableInvertIQ();
     LoRa.setCodingRate4(7);
-
-    // Configuración del sensor de luz
-    if (!tsl.begin()) {
-        Serial.println("No se pudo encontrar el sensor de luz TSL2561.");
-    } else {
-        tsl.enableAutoRange(true);  // Ajuste automático del rango
-        tsl.setIntegrationTime(TSL2561_INTEGRATIONTIME_13MS); // Tiempo de integración
-        Serial.println("Sensor de luz TSL2561 configurado.");
-    }
+ 
 }
 
 void loop() {
     // Captura de datos de temperatura y humedad
-    if (estado == "A") {
+  if (estado == "A") {
         for (int i = 0; i < 10; i++) {
             float temperatura = sensor.readTemperature();
             float humedad = sensor.readHumidity();
             humidities.push_back(humedad);
             temperatures.push_back(temperatura);
-            delay(100);
+            smartDelay(100);
         }
-        temperaturaf = averagetemp(temperatures);
-        humidityf = averagehum(humidities);
         estado = "B";
     }
-
-    // Captura de datos de luz
-    sensors_event_t event;
-    tsl.getEvent(&event);
-    if (event.light) {
-        lightLevel = event.light;
-    } else {
-        lightLevel = 0.0;
-        Serial.println("No se pudo leer el nivel de luz.");
+    
+    if (estado == "B"){
+      temperaturaf = averagetemp(temperatures);
+      humidityf = averagehum(humidities);
+      estado = "A";
     }
 
-    if (ss.available()) {
-        gps.encode(ss.read());
+    // Obtener datos de luz y proximidad
+    long luz = aps.getAmbientLight();
+    long proximidad = aps.getProximity();
+
+    // Captura de datos GPS
+    if (Serial2.available()) {
+        gps.encode(Serial2.read());
     }
 
-    if (gps.location.isValid()) {
-        float latitude = gps.location.lat();
-        float longitude = gps.location.lng();
+    // Datos GPS válidos, continuar
+    float latitude = gps.location.lat();
+    float longitude = gps.location.lng();
 
-        // Imprimir en consola
-        Serial.print("Latitud: ");
-        Serial.println(latitude, 6);
-        Serial.print("Longitud: ");
-        Serial.println(longitude, 6);
-        Serial.print("Temperatura: ");
-        Serial.println(temperaturaf);
-        Serial.print("Humedad: ");
-        Serial.println(humidityf);
-        Serial.print("Nivel de luz: ");
-        Serial.println(lightLevel);
+    // Imprimir datos en consola
+    Serial.print("Latitud: ");
+    Serial.println(latitude, 6);
+    Serial.print("Longitud: ");
+    Serial.println(longitude, 6);
+    Serial.print("Temperatura: ");
+    Serial.println(temperaturaf);
+    Serial.print("Humedad: ");
+    Serial.println(humidityf);
+    Serial.print("Luz: ");
+    Serial.println(luz);
+    Serial.print("Proximidad: ");
+    Serial.println(proximidad);
 
-        // Crear JSON para enviar por LoRa
-        String postData = String("{\"id\": \"") + deviceId + "\"," 
-                        + "\"lat\": " + String(latitude, 6) + ", " 
-                        + "\"lon\": " + String(longitude, 6) + ", " 
-                        + "\"temperatura\": " + String(temperaturaf, 2) + ", " 
-                        + "\"humedad\": " + String(humidityf, 2) + ", "
-                        + "\"luz\": " + String(lightLevel, 2) + "}";
+    // Crear JSON para enviar por LoRa
+    String postData = String("robocar${\"lat\": {\"value\": ") + String(gps.location.lat(), 6) + ", \"type\": \"Float\"}, " 
+             + "\"lon\": {\"value\": " + String(gps.location.lng(), 6) + ", \"type\": \"Float\"}, " 
+             + "\"temperatura\": {\"value\": " + String(temperaturaf, 2) + ", \"type\": \"Float\"}, " 
+             + "\"humedad\": {\"value\": " + String(humidityf, 2) + ", \"type\": \"Float\"}}";
 
-        // Enviar datos a través de LoRa
-        LoRa.beginPacket();
-        LoRa.print(postData);
-        LoRa.endPacket();
+    // Enviar datos a través de LoRa
+    LoRa.beginPacket();
+    LoRa.print(postData);
+    LoRa.endPacket();
 
-        counter++;
-    }
+    counter++;
+    
+    Serial.println("Paquete LoRa enviado: " + postData); // Mostrar datos enviados
 
-    delay(5000);  // Esperar antes del siguiente envío
+    smartDelay(300000);  // Esperar antes del siguiente envío
 }
 
 // Funciones auxiliares
-float averagetemp(const vector<float> &temperatures) {
+float averagetemp(const vector<float>& temperatures) {
     float suma = 0.0;
     for (float temp : temperatures) {
         suma += temp;
@@ -186,10 +185,20 @@ float averagetemp(const vector<float> &temperatures) {
     return suma / temperatures.size();
 }
 
-float averagehum(const vector<float> &humidities) {
+float averagehum(const vector<float>& humidities) {
     float suma = 0.0;
     for (float hum : humidities) {
         suma += hum;
     }
     return suma / humidities.size();
+}
+
+// Smart delay para GPS
+static void smartDelay(unsigned long ms) {
+    unsigned long start = millis();
+    do {
+        while (Serial2.available()) {
+            gps.encode(Serial2.read());
+        }
+    } while (millis() - start < ms);
 }
